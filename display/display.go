@@ -15,8 +15,14 @@ func GenOutputString(address string, record *latency.AddressRecord) string {
 	record.Lock.Lock()
 	defer record.Lock.Unlock()
 
-	if len(record.PacketDQ) > 0 && record.PacketsSentSuccess > 0 {
-		str = fmt.Sprintf("%s Latency: %f Loss: %f%%", address, record.PacketDQ[len(record.PacketDQ)-1].Latency, float64(record.PacketsDropped)/float64(record.PacketsSentSuccess))
+	if len(record.PacketDQ) > 0 && record.PacketDQ[len(record.PacketDQ)-1].Err != nil {
+		str = fmt.Sprintf("%s Error: %v", address, record.PacketDQ[len(record.PacketDQ)-1].Err)
+	} else if len(record.PacketDQ) > 0 && record.PacketsSentSuccess > 0 {
+		latAvg := 0.0
+		if record.LatAvgCount > 0 {
+			latAvg = record.LatAvgSum / record.LatAvgCount
+		}
+		str = fmt.Sprintf("%s Latency: %f Loss: %f%%", address, latAvg, float64(record.PacketsDropped)/float64(record.PacketsSentSuccess))
 	}
 	return str
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/gbin/goncurses"
 	"github.com/seanmcadam/PingPal/config"
@@ -46,7 +47,8 @@ func main() {
 		display.UpdateScreen(&sessAddr, stdscr, &input.Settings)
 	}()
 
-	for true {
-
-	}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	<-c
+	goncurses.End()
 }

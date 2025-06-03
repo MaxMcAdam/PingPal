@@ -19,6 +19,8 @@ type AddressRecord struct {
 	PacketsSentSuccess uint64
 	PacketsDropped     uint64
 	PacketDQ           []PacketRecord
+	LatAvgSum          float64
+	LatAvgCount        float64
 }
 
 type PacketRecord struct {
@@ -34,7 +36,7 @@ func MonitorLatency(ipAddr string, packets *AddressRecord, sessConfig *config.Se
 	for true {
 		// Check latency and update packet record queue
 		latency, sentTime, dropped, err := CheckLatencyICMP(ipAddr, time.Duration(sessConfig.ConnectionTimeoutS*uint64(time.Second)))
-		//fmt.Printf("latency: %v, senttime: %v, err: %v\n", latency, sentTime, err)
+
 		packets.Lock.Lock()
 
 		packets.PacketDQ = append(packets.PacketDQ, PacketRecord{TimeSent: sentTime, Err: err, Latency: latency, Dropped: dropped})
@@ -47,6 +49,9 @@ func MonitorLatency(ipAddr string, packets *AddressRecord, sessConfig *config.Se
 			packets.PacketsDropped++
 		}
 
+		packets.LatAvgSum += latency
+		packets.LatAvgCount++
+
 		if sessConfig.PktDropTimeS > 0 {
 			firstValid := 0
 			// Remove PacketRecords that have timed out
@@ -57,6 +62,8 @@ func MonitorLatency(ipAddr string, packets *AddressRecord, sessConfig *config.Se
 					firstValid = i
 					break
 				}
+				packets.LatAvgSum -= PacketRec.Latency
+				packets.LatAvgCount--
 			}
 			packets.PacketDQ = packets.PacketDQ[firstValid:]
 		}
