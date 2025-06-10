@@ -15,6 +15,7 @@ import (
 // PackersSent and PacketsLost are updated everytime a new entry is added to the PacketDQ
 // The key for the PacketDQ is an id number
 type AddressRecord struct {
+	Address            string
 	Lock               sync.Mutex
 	PacketsSentSuccess uint64
 	PacketsDropped     uint64
