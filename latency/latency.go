@@ -4,72 +4,22 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/seanmcadam/PingPal/config"
+	"github.com/seanmcadam/PingPal/record"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 )
 
-// PackersSent and PacketsLost are updated everytime a new entry is added to the PacketDQ
-// The key for the PacketDQ is an id number
-type AddressRecord struct {
-	Address            string
-	Lock               sync.Mutex
-	PacketsSentSuccess uint64
-	PacketsDropped     uint64
-	PacketDQ           []PacketRecord
-	LatAvgSum          float64
-	LatAvgCount        float64
-}
-
-type PacketRecord struct {
-	TimeSent time.Time
-	Err      error
-	Latency  float64
-	Dropped  bool
-}
-
 // This loop monitors the latency for a single ip address.
 // The latency is updated in a PacketLoss struct shared with the main process.
-func MonitorLatency(ipAddr string, packets *AddressRecord, sessConfig *config.SessionSettings) {
+func MonitorLatency(ipAddr string, packets *record.AddressRecord, sessConfig *config.SessionSettings) {
 	for true {
 		// Check latency and update packet record queue
-		latency, sentTime, dropped, err := CheckLatencyICMP(ipAddr, time.Duration(sessConfig.ConnectionTimeoutS*uint64(time.Second)))
+		latency, sentTime, dropped, err := CheckLatencyICMP(ipAddr, time.Duration(sessConfig.ConnectionTimeoutS*uint64(time.Millisecond)))
 
-		packets.Lock.Lock()
-
-		packets.PacketDQ = append(packets.PacketDQ, PacketRecord{TimeSent: sentTime, Err: err, Latency: latency, Dropped: dropped})
-
-		// Update address aggregates with new pack info
-		if latency > 0 || dropped {
-			packets.PacketsSentSuccess++
-		}
-		if dropped {
-			packets.PacketsDropped++
-		}
-
-		packets.LatAvgSum += latency
-		packets.LatAvgCount++
-
-		if sessConfig.PktDropTimeS > 0 {
-			firstValid := 0
-			// Remove PacketRecords that have timed out
-			// Oldest records are at the front of the slice
-			validAfter := time.Now().Add(-time.Duration(sessConfig.PktDropTimeS * uint64(time.Second)))
-			for i, PacketRec := range packets.PacketDQ {
-				if PacketRec.TimeSent.Compare(validAfter) > 0 {
-					firstValid = i
-					break
-				}
-				packets.LatAvgSum -= PacketRec.Latency
-				packets.LatAvgCount--
-			}
-			packets.PacketDQ = packets.PacketDQ[firstValid:]
-		}
-
-		packets.Lock.Unlock()
+		packets.AddPacketRecord(sentTime, err, latency, dropped, time.Duration(sessConfig.PktDropTimeS))
 
 		time.Sleep(time.Duration(sessConfig.LatencyCheckIntervalS * uint64(time.Second)))
 	}
@@ -127,7 +77,7 @@ func CheckLatencyICMP(ipAddr string, timeout time.Duration) (float64, time.Time,
 	reply := make([]byte, 1500) // Buffer size for reply
 	n, _, err := conn.ReadFrom(reply)
 	if err != nil {
-		return 0, startTime, true, fmt.Errorf("error receiving ICMP reply: %w", err)
+		return 0, startTime, true, nil
 	}
 
 	// Calculate elapsed time

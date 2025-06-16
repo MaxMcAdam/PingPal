@@ -6,7 +6,7 @@ import (
 
 	"github.com/gbin/goncurses"
 	"github.com/seanmcadam/PingPal/config"
-	"github.com/seanmcadam/PingPal/latency"
+	"github.com/seanmcadam/PingPal/record"
 )
 
 type App struct {
@@ -61,28 +61,25 @@ func (app *App) Cleanup() {
 	goncurses.End()
 }
 
-func GenOutputString(address string, record *latency.AddressRecord) string {
-	str := fmt.Sprintf("%s", address)
-
+func GenOutputValues(address string, record *record.AddressRecord) (latAvg string, lossAvg string, errStr string) {
 	// Get the lock for this record
-	record.Lock.Lock()
-	defer record.Lock.Unlock()
+	avgLat, pktLossAvg, _ := record.GetCurrentStats()
 
-	if len(record.PacketDQ) > 0 && record.PacketDQ[len(record.PacketDQ)-1].Err != nil {
+	if record.CurrentErr != nil {
 		// If there was an error on the most recent latency check, display that
-		str = fmt.Sprintf("%s Error: %v", address, record.PacketDQ[len(record.PacketDQ)-1].Err)
+		errStr = fmt.Sprintf("%s Error: %v", address, record.CurrentErr)
 	} else if len(record.PacketDQ) > 0 && record.PacketsSentSuccess > 0 {
 		// Otherwise return a string with the average latency and packet loss
-		latAvg := 0.0
+		latAvg = "0.0"
 		if record.LatAvgCount > 0 {
-			latAvg = record.LatAvgSum / record.LatAvgCount
+			latAvg = fmt.Sprintf("%.2f", avgLat)
 		}
-		str = fmt.Sprintf("%s    %f              %f%%", address, latAvg, float64(record.PacketsDropped)/float64(record.PacketsSentSuccess))
+		lossAvg = fmt.Sprintf("%.2f%%", 100*pktLossAvg)
 	}
-	return str
+	return
 }
 
-func (app *App) UpdateMainDisplay(addresses *[]*latency.AddressRecord, packetDropTime uint64) {
+func (app *App) UpdateMainDisplay(addresses *[]*record.AddressRecord, packetDropTime uint64) {
 	// Clear the main window
 	app.mainWin.Clear()
 
@@ -97,7 +94,14 @@ func (app *App) UpdateMainDisplay(addresses *[]*latency.AddressRecord, packetDro
 	// Display address stats
 	line := 2
 	for _, rec := range *addresses {
-		app.mainWin.MovePrint(line, 2, GenOutputString(rec.Address, rec))
+		app.mainWin.MovePrint(line, 2, rec.Address)
+		latAvg, lossAvg, errStr := GenOutputValues(rec.Address, rec)
+		if errStr != "" {
+			app.mainWin.MovePrint(line, 10, errStr)
+		} else {
+			app.mainWin.MovePrint(line, 20, latAvg)
+			app.mainWin.MovePrint(line, 43, lossAvg)
+		}
 		line++
 	}
 	app.mainWin.MovePrint(maxY-1, 2, "Press 'q' to quit")
@@ -115,7 +119,7 @@ func (app *App) HandleInput() {
 	}
 }
 
-func (app *App) Run(addresses *[]*latency.AddressRecord, settings *config.SessionSettings) {
+func (app *App) Run(addresses *[]*record.AddressRecord, settings *config.SessionSettings) {
 	for app.running {
 		// Update the main display
 		app.UpdateMainDisplay(addresses, settings.PktDropTimeS)

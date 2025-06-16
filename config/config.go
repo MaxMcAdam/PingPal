@@ -2,32 +2,54 @@ package config
 
 import (
 	"flag"
+	"fmt"
 	"os"
-	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 // Alternative implementation with more explicit validation
 func ParseFlagsWithValidation() (*Input, error) {
 	settings := &SessionSettings{}
-	var aFlag StringSliceFlag
 
 	// Create custom FlagSet for more control
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 
 	fs.Uint64Var(&settings.DisplayRefreshTimeS, "d", 1, "Display refresh rate in seconds (uint64)")
-	fs.Uint64Var(&settings.PktDropTimeS, "p", 300, "Time to average latency and packet loss across in seconds (uint64)")
+	fs.Uint64Var(&settings.PktDropTimeS, "p", 30, "Time to average latency and packet loss across in seconds (uint64)")
 	fs.Uint64Var(&settings.LatencyCheckIntervalS, "l", 5, "Latency check interval seconds (uint64)")
-	fs.Uint64Var(&settings.ConnectionTimeoutS, "c", 120, "Connection timeout in seconds (uint64)")
-	fs.Var(&aFlag, "a", "IP address to monitor (string, repeatable)")
+	fs.Uint64Var(&settings.ConnectionTimeoutS, "c", 500, "Connection timeout in milliseconds (uint64)")
+
+	fs.Usage = usage
 
 	// Parse with custom error handling
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return nil, err
 	}
 
-	input := Input{Addresses: []string(aFlag), Settings: *settings}
+	addr := fs.Args()
+
+	if len(addr) == 0 {
+		return nil, fmt.Errorf("Must provide at least one address to monitor.")
+	}
+
+	input := Input{Addresses: addr, Settings: *settings}
 
 	return &input, nil
+}
+
+const usageHeader = `Usage: pingpal [c] [d] [l] [p] (ip address...)
+  -c uint
+    	Connection timeout in milliseconds (uint64) (default 120)
+  -d uint
+    	Display refresh rate in seconds (uint64) (default 1)
+  -l uint
+    	Latency check interval seconds (uint64) (default 5)
+  -p uint
+    	Time to average latency and packet loss across in seconds (uint64) (default 300)`
+
+func usage() {
+	fmt.Println(usageHeader)
 }
 
 type Input struct {
@@ -43,30 +65,27 @@ type SessionSettings struct {
 	ConnectionTimeoutS    uint64 // how long to wait for a reply to the ICMP packet in seconds
 }
 
-// StringSliceFlag is a custom flag type that can collect multiple values
-type StringSliceFlag []string
+func HasCapNetRaw() (bool, error) {
+	caps := unix.Getuid()
 
-// String returns the string representation of the flag values
-func (s *StringSliceFlag) String() string {
-	return strings.Join(*s, ", ")
-}
+	// Check if running as root (has all capabilities)
+	if caps == 0 {
+		return true, nil
+	}
 
-// Set appends each value to the slice
-// This is called each time the flag appears on the command line
-func (s *StringSliceFlag) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
+	// For non-root, check specific capability
+	hdr := unix.CapUserHeader{
+		Version: unix.LINUX_CAPABILITY_VERSION_3,
+		Pid:     0, // 0 means current process
+	}
 
-// ParseRepeatedFlag parses command line arguments and collects all values
-// provided with the '-a' flag.
-// Returns a slice containing all the values.
-func ParseFlags() []string {
-	// Create our custom flag
-	var addresses StringSliceFlag
+	var data [2]unix.CapUserData
+	err := unix.Capget(&hdr, &data[0])
+	if err != nil {
+		return false, err
+	}
 
-	// Register the flag with the flag package
-	flag.Var(&addresses, "a", "IP address to monitor (can be repeated)")
-	flag.Parse()
-	return addresses
+	// CAP_NET_RAW is capability 13
+	capNetRaw := uint32(1 << 13)
+	return (data[0].Effective & capNetRaw) != 0, nil
 }
