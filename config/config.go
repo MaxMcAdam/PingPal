@@ -17,7 +17,7 @@ func ParseFlagsWithValidation() (*Input, error) {
 
 	fs.Uint64Var(&settings.DisplayRefreshTimeS, "d", 1, "Display refresh rate in seconds (uint64)")
 	fs.Uint64Var(&settings.PktDropTimeS, "p", 30, "Time to average latency and packet loss across in seconds (uint64)")
-	fs.Uint64Var(&settings.LatencyCheckIntervalS, "l", 5, "Latency check interval seconds (uint64)")
+	fs.Uint64Var(&settings.LatencyCheckIntervalS, "l", 1, "Latency check interval seconds (uint64)")
 	fs.Uint64Var(&settings.ConnectionTimeoutS, "c", 500, "Connection timeout in milliseconds (uint64)")
 
 	fs.Usage = usage
@@ -44,7 +44,7 @@ const usageHeader = `Usage: pingpal [c] [d] [l] [p] (ip address...)
   -d uint
     	Display refresh rate in seconds (uint64) (default 1)
   -l uint
-    	Latency check interval seconds (uint64) (default 5)
+    	Latency check interval seconds (uint64) (default 1)
   -p uint
     	Time to average latency and packet loss across in seconds (uint64) (default 300)`
 

@@ -65,9 +65,9 @@ func GenOutputValues(address string, record *record.AddressRecord) (latAvg strin
 	// Get the lock for this record
 	avgLat, pktLossAvg, _ := record.GetCurrentStats()
 
-	if record.CurrentErr != nil {
+	if record.Health.ErrorCount > 0 {
 		// If there was an error on the most recent latency check, display that
-		errStr = fmt.Sprintf("%s Error: %v", address, record.CurrentErr)
+		errStr = fmt.Sprintf("%s Error: %s ", address, record.Health.Status)
 	} else if len(record.PacketDQ) > 0 && record.PacketsSentSuccess > 0 {
 		// Otherwise return a string with the average latency and packet loss
 		latAvg = "0.0"
